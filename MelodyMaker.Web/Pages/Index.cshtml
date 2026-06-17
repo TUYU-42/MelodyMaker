@@ -1,0 +1,548 @@
+@page
+@model MelodyMaker.Web.Pages.IndexModel
+@{
+    ViewData["Title"] = "Melody Maker";
+}
+
+<div class="melody-page">
+    <section class="hero-panel">
+        <div class="hero-content">
+            <span class="eyebrow">ASP.NET Core Music Generator</span>
+            <h1>Melody Maker Web</h1>
+            <p>
+                將原本 WinForms 音樂生成流程 Web 化：設定風格、情緒、調性與副旋律密度，
+                一鍵產生 Chord、Main Melody、Sub Melody，並輸出 MusicXML / PDF / MIDI / Audio。
+            </p>
+            <div class="hero-badges">
+                <span>🎼 Main Melody</span>
+                <span>🎹 Sub Melody</span>
+                <span>📄 Score Export</span>
+                <span>🌐 Web Version</span>
+            </div>
+        </div>
+        <div class="hero-card">
+            <div class="hero-card-icon">♪</div>
+            <div>
+                <strong>Generate Music</strong>
+                <span>Style-aware melody generation with expert editing support.</span>
+            </div>
+        </div>
+    </section>
+
+    <form method="post" class="composer-form">
+        <section class="ui-card">
+            <div class="section-heading">
+                <div>
+                    <span class="section-kicker">01</span>
+                    <h2>Basic Settings</h2>
+                </div>
+                <p>選擇音樂風格、情緒、調性與長度。</p>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label asp-for="Input.Style" class="form-label">Style</label>
+                    <select asp-for="Input.Style" class="form-select">
+                        <option>江南風格</option>
+                        <option>Pop</option>
+                        <option>JPop</option>
+                        <option>Jazz</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label asp-for="Input.Emotion" class="form-label">Emotion</label>
+                    <select asp-for="Input.Emotion" class="form-select">
+                        <option>Neutral</option>
+                        <option>Calm</option>
+                        <option>Bright</option>
+                        <option>Sad</option>
+                        <option>Tense</option>
+                        <option>Energetic</option>
+                    </select>
+                </div>
+
+                <div class="col-md-2">
+                    <label asp-for="Input.Key" class="form-label">Key</label>
+                    <select asp-for="Input.Key" class="form-select">
+                        <option>C</option>
+                        <option>G</option>
+                        <option>D</option>
+                        <option>A</option>
+                        <option>E</option>
+                        <option>F</option>
+                        <option>Bb</option>
+                        <option>Eb</option>
+                        <option>A minor</option>
+                        <option>E minor</option>
+                        <option>D minor</option>
+                    </select>
+                </div>
+
+                <div class="col-md-2">
+                    <label asp-for="Input.Mode" class="form-label">Mode</label>
+                    <select asp-for="Input.Mode" class="form-select">
+                        <option>Auto</option>
+                        <option>Major</option>
+                        <option>Minor</option>
+                        <option>Pentatonic</option>
+                        <option>Dorian</option>
+                        <option>Mixolydian</option>
+                    </select>
+                </div>
+
+                <div class="col-md-2">
+                    <label asp-for="Input.Tempo" class="form-label">Tempo</label>
+                    <input asp-for="Input.Tempo" class="form-control" type="number" min="40" max="240" />
+                </div>
+
+                <div class="col-md-2">
+                    <label asp-for="Input.SongMinutes" class="form-label">Length(min)</label>
+                    <input asp-for="Input.SongMinutes" class="form-control" type="number" min="1" max="5" />
+                </div>
+
+                <div class="col-md-3">
+                    <label asp-for="Input.SubDensity" class="form-label">Sub Melody Density</label>
+                    <select asp-for="Input.SubDensity" class="form-select">
+                        <option>Low</option>
+                        <option>Medium</option>
+                        <option>High</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <section class="ui-card accent-card">
+            <div class="section-heading">
+                <div>
+                    <span class="section-kicker">02</span>
+                    <h2>Keyboard-style Seed Input</h2>
+                </div>
+                <p>可以用鍵盤快速輸入旋律動機，讓系統依照 seed 發展。</p>
+            </div>
+
+            <div class="form-check form-switch mb-3">
+                <input asp-for="Input.UseSeedInput" class="form-check-input" />
+                <label asp-for="Input.UseSeedInput" class="form-check-label">Use Keyboard-style Seed Input</label>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label asp-for="Input.SeedMode" class="form-label">Seed Mode</label>
+                    <select asp-for="Input.SeedMode" class="form-select">
+                        <option>Motif</option>
+                        <option>Single Notes</option>
+                        <option>Chord Seed</option>
+                        <option>Mixed</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label asp-for="Input.KeyboardOctave" class="form-label">Keyboard Octave</label>
+                    <select asp-for="Input.KeyboardOctave" class="form-select">
+                        <option>3</option>
+                        <option>4</option>
+                        <option>5</option>
+                        <option>6</option>
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Keyboard Map</label>
+                    <div id="seedCaptureArea" tabindex="0" class="keyboard-capture">
+                        <div class="keyboard-title">點這裡後直接按鍵盤輸入</div>
+                        <div class="keyboard-map">A S D F G H J K = C D E F G A B C　｜　W/E/T/Y/U = 升記號　｜　Space = 分句</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-3">
+                <label asp-for="Input.SeedText" class="form-label">Seed Preview</label>
+                <textarea asp-for="Input.SeedText" class="form-control" rows="2" placeholder="例如：C4 D4 E4 G4 A4，也可以點上方 Keyboard Map 後按鍵盤輸入"></textarea>
+                <button type="button" id="clearSeedButton" class="btn btn-sm btn-soft mt-2">Clear Seed</button>
+            </div>
+        </section>
+
+        <section class="ui-card">
+            <div class="section-heading">
+                <div>
+                    <span class="section-kicker">03</span>
+                    <h2>Chord Input</h2>
+                </div>
+                <p>可手動輸入和弦；若留空，系統會自動產生。</p>
+            </div>
+
+            <label asp-for="Input.ChordText" class="form-label">Chord Text</label>
+            <textarea asp-for="Input.ChordText" class="form-control font-monospace" rows="3" placeholder="例如：XC501XA501XF501XG501；空白則自動產生 C-Am-F-G"></textarea>
+        </section>
+
+        <section class="ui-card expert-card">
+            <div class="section-heading">
+                <div>
+                    <span class="section-kicker">04</span>
+                    <h2>Expert Mode</h2>
+                </div>
+                <p>進階小節編輯，可修改 Main YNote / Sub YNote 後重新生成。</p>
+            </div>
+
+            <div class="form-check form-switch mb-3">
+                <input asp-for="Input.UseExpertMode" class="form-check-input" />
+                <label asp-for="Input.UseExpertMode" class="form-check-label">Enable Expert Mode 多小節編輯</label>
+            </div>
+
+            <div class="helper-note">
+                先按 <strong>Generate Music</strong>，系統會把結果帶入下面三個欄位；你可以手動改 Main YNote / Sub YNote，
+                再按 <strong>Generate from Expert Mode</strong> 或 <strong>Update Sub Melody</strong>。
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Input.ExpertChordText" class="form-label">Expert ChordText</label>
+                <textarea asp-for="Input.ExpertChordText" class="form-control font-monospace" rows="2" placeholder="Generate Music 後會自動帶入，也可手動貼上 ChordText"></textarea>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Input.ExpertMainYNote" class="form-label">Expert Main YNote</label>
+                <textarea asp-for="Input.ExpertMainYNote" class="form-control font-monospace" rows="4" placeholder="Generate Music 後會自動帶入，也可手動貼上主旋律 YNote"></textarea>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Input.ExpertSubYNote" class="form-label">Expert Sub YNote</label>
+                <textarea asp-for="Input.ExpertSubYNote" class="form-control font-monospace" rows="4" placeholder="可手動編輯副旋律；若要讓系統重算副旋律，按 Update Sub Melody"></textarea>
+            </div>
+        </section>
+
+        <div class="action-bar">
+            <button type="submit" asp-page-handler="GenerateChord" class="btn btn-outline-primary btn-lg">Gen Chord</button>
+            <button type="submit" asp-page-handler="GenerateScore" class="btn btn-primary btn-lg main-action">Generate Music</button>
+            <button type="submit" asp-page-handler="GenerateExpertScore" class="btn btn-success btn-lg">Generate from Expert Mode</button>
+            <button type="submit" asp-page-handler="UpdateSubMelody" class="btn btn-outline-success btn-lg">Update Sub Melody</button>
+        </div>
+    </form>
+
+    <section class="ui-card lookup-card">
+        <div class="section-heading">
+            <div>
+                <span class="section-kicker">Saved</span>
+                <h2>Load Saved Music</h2>
+            </div>
+            <p>Enter a saved password to restore the generated score links and MIDI.</p>
+        </div>
+
+        <form method="post" asp-page-handler="LoadSaved" class="row g-3 align-items-end">
+            <div class="col-md-8">
+                <label asp-for="LookupPassword" class="form-label">Password</label>
+                <input asp-for="LookupPassword" class="form-control" autocomplete="off" />
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-outline-primary btn-lg w-100">Load Music</button>
+            </div>
+        </form>
+    </section>
+
+    @if (Model.HasChordOnlyResult)
+    {
+        <section class="result-card info-card">
+            <div class="result-header">
+                <div>
+                    <span class="section-kicker">Chord</span>
+                    <h2>Chord progression 已產生</h2>
+                </div>
+                <p>Chord Text 已更新，可以複製使用，或直接按 Generate Music 產生音樂。</p>
+            </div>
+
+            <label class="form-label">Generated ChordText</label>
+            <textarea class="form-control font-monospace" rows="3" readonly>@Model.OutputChordText</textarea>
+
+            <h3 class="mt-4">Analysis Report / Harmony Score</h3>
+            <pre class="report-box">@Model.AnalysisReport</pre>
+        </section>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="alert alert-danger modern-alert">
+            <strong>產生失敗</strong>
+            <pre class="mb-0">@Model.ErrorMessage</pre>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.WarningMessage))
+    {
+        <div class="alert alert-warning modern-alert">
+            <strong>注意</strong>
+            <pre class="mb-0">@Model.WarningMessage</pre>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.SuccessMessage))
+    {
+        <div class="alert alert-success modern-alert">
+            <strong>Done</strong>
+            <pre class="mb-0">@Model.SuccessMessage</pre>
+        </div>
+    }
+
+    @if (Model.HasResult)
+    {
+        <section class="result-card success-card">
+            <div class="result-header">
+                <div>
+                    <span class="section-kicker">Result</span>
+                    <h2>Generated Music</h2>
+                </div>
+                <p>樂譜與音訊已產生，可直接播放、預覽或下載。</p>
+            </div>
+
+            <div class="download-grid">
+                @if (!string.IsNullOrWhiteSpace(Model.MusicXmlUrl))
+                {
+                    <a class="download-tile" href="@Model.MusicXmlUrl" target="_blank"><span>🎼</span>MusicXML</a>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(Model.PdfUrl))
+                {
+                    <a class="download-tile" href="@Model.PdfUrl" target="_blank"><span>📄</span>PDF Score</a>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(Model.MsczUrl))
+                {
+                    <a class="download-tile" href="@Model.MsczUrl" download><span>🎹</span>MuseScore MSCZ</a>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(Model.MidiUrl))
+                {
+                    <a class="download-tile" href="@Model.MidiUrl" download><span>🎧</span>MIDI</a>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(Model.AudioUrl))
+                {
+                    <a class="download-tile" href="@Model.AudioUrl" download><span>🔊</span>Audio</a>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(Model.JudgeExportUrl))
+                {
+                    <a class="download-tile" href="@Model.JudgeExportUrl" target="_blank"><span>📋</span>Judge Export</a>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(Model.ZipUrl))
+                {
+                    <a class="download-tile highlight" href="@Model.ZipUrl" download><span>📦</span>All ZIP</a>
+                }
+            </div>
+
+            <div class="score-actions">
+                @if (!string.IsNullOrWhiteSpace(Model.PdfUrl))
+                {
+                    <button type="button" class="btn btn-outline-secondary btn-lg" onclick="printScorePdf('@Model.PdfUrl')">Print Score</button>
+                }
+                else
+                {
+                    <button type="button" class="btn btn-outline-secondary btn-lg" onclick="window.print()">Print Page</button>
+                }
+
+                <form method="post" asp-page-handler="EmailGenerated" class="score-action-form">
+                    <input type="hidden" asp-for="CurrentJobId" />
+                    <input type="hidden" name="PostedMusicXmlUrl" value="@Model.MusicXmlUrl" />
+                    <input type="hidden" name="PostedPdfUrl" value="@Model.PdfUrl" />
+                    <input type="hidden" name="PostedMsczUrl" value="@Model.MsczUrl" />
+                    <input type="hidden" name="PostedMidiUrl" value="@Model.MidiUrl" />
+                    <input type="hidden" name="PostedAudioUrl" value="@Model.AudioUrl" />
+                    <input type="hidden" name="PostedZipUrl" value="@Model.ZipUrl" />
+                    <input type="hidden" name="PostedJudgeExportUrl" value="@Model.JudgeExportUrl" />
+                    <input type="hidden" name="PostedChordText" value="@Model.OutputChordText" />
+                    <input type="hidden" name="PostedMainYNote" value="@Model.OutputMainYNote" />
+                    <input type="hidden" name="PostedSubYNote" value="@Model.OutputSubYNote" />
+                    <input type="hidden" name="PostedAnalysisReport" value="@Model.AnalysisReport" />
+                    <label asp-for="RecipientEmail" class="visually-hidden">Email</label>
+                    <input asp-for="RecipientEmail" class="form-control" type="email" placeholder="user@example.com" />
+                    <button type="submit" class="btn btn-primary btn-lg">Email Score + MIDI</button>
+                </form>
+
+                <form method="post" asp-page-handler="SaveGenerated" class="score-action-form compact">
+                    <input type="hidden" asp-for="CurrentJobId" />
+                    <input type="hidden" name="PostedMusicXmlUrl" value="@Model.MusicXmlUrl" />
+                    <input type="hidden" name="PostedPdfUrl" value="@Model.PdfUrl" />
+                    <input type="hidden" name="PostedMsczUrl" value="@Model.MsczUrl" />
+                    <input type="hidden" name="PostedMidiUrl" value="@Model.MidiUrl" />
+                    <input type="hidden" name="PostedAudioUrl" value="@Model.AudioUrl" />
+                    <input type="hidden" name="PostedZipUrl" value="@Model.ZipUrl" />
+                    <input type="hidden" name="PostedJudgeExportUrl" value="@Model.JudgeExportUrl" />
+                    <input type="hidden" name="PostedChordText" value="@Model.OutputChordText" />
+                    <input type="hidden" name="PostedMainYNote" value="@Model.OutputMainYNote" />
+                    <input type="hidden" name="PostedSubYNote" value="@Model.OutputSubYNote" />
+                    <input type="hidden" name="PostedAnalysisReport" value="@Model.AnalysisReport" />
+                    <button type="submit" class="btn btn-success btn-lg">Save and Get Password</button>
+                </form>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(Model.AudioUrl))
+            {
+                <div class="player-panel">
+                    <h3>Audio Playback</h3>
+                    <audio id="generatedAudio" class="w-100" controls preload="auto" autoplay src="@Model.AudioUrl"></audio>
+                    <div id="audioAutoplayHint" class="form-text mt-2">
+                        如果瀏覽器阻擋自動播放，請按上方播放鍵。這是 Web 版取代 WinForms Play MIDI 的播放方式。
+                    </div>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(Model.MidiUrl))
+            {
+                <div class="alert alert-secondary modern-alert">
+                    已產生 MIDI，但瀏覽器不一定能直接播放 .mid。請下載 MIDI，或確認 MuseScore 能匯出 MP3/WAV 後再重新產生。
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(Model.PdfUrl))
+            {
+                <div class="preview-panel">
+                    <h3>PDF Preview</h3>
+                    <iframe src="@Model.PdfUrl" class="pdf-preview"></iframe>
+                </div>
+            }
+
+            @if (Model.ExpertRows.Count > 0)
+            {
+                <div class="preview-panel">
+                    <h3>Expert Bar View</h3>
+                    <p class="text-muted">把輸出的 YNote 拆成小節後的預覽，方便對照原 WinForms Expert Mode 的每小節編輯概念。</p>
+                    <div class="table-responsive rounded-table">
+                        <table class="table table-sm table-hover align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th style="width: 70px;">Bar</th>
+                                    <th style="width: 120px;">Chord</th>
+                                    <th>Main Preview</th>
+                                    <th>Sub Preview</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in Model.ExpertRows)
+                                {
+                                    <tr>
+                                        <td><span class="bar-pill">@row.BarNumber</span></td>
+                                        <td><code>@row.ChordCode</code><br /><span class="text-muted">@row.ChordName</span></td>
+                                        <td><code>@row.MainYNote</code><br /><span class="text-muted">@row.MainPreview</span></td>
+                                        <td><code>@row.SubYNote</code><br /><span class="text-muted">@row.SubPreview</span></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+
+            <div class="output-grid">
+                <div>
+                    <label class="form-label">ChordText</label>
+                    <textarea class="form-control font-monospace" rows="3" readonly>@Model.OutputChordText</textarea>
+                </div>
+
+                <div>
+                    <label class="form-label">Main YNote</label>
+                    <textarea class="form-control font-monospace" rows="4" readonly>@Model.OutputMainYNote</textarea>
+                </div>
+
+                <div>
+                    <label class="form-label">Sub YNote</label>
+                    <textarea class="form-control font-monospace" rows="4" readonly>@Model.OutputSubYNote</textarea>
+                </div>
+            </div>
+
+            <div class="preview-panel mt-4">
+                <h3>Analysis Report / Harmony Score</h3>
+                <pre class="report-box">@Model.AnalysisReport</pre>
+            </div>
+        </section>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        (() => {
+            const seedCaptureArea = document.getElementById('seedCaptureArea');
+            const seedText = document.getElementById('Input_SeedText');
+            const octaveSelect = document.getElementById('Input_KeyboardOctave');
+            const useSeedInput = document.getElementById('Input_UseSeedInput');
+            const clearSeedButton = document.getElementById('clearSeedButton');
+
+            const keyMap = {
+                'a': 'C', 'w': 'c', 's': 'D', 'e': 'd', 'd': 'E',
+                'f': 'F', 't': 'f', 'g': 'G', 'y': 'g', 'h': 'A',
+                'u': 'a', 'j': 'B', 'k': 'C'
+            };
+
+            function appendSeedToken(token) {
+                if (!seedText) return;
+                const current = seedText.value.trim();
+                seedText.value = current.length === 0 ? token : current + ' ' + token;
+                if (useSeedInput) useSeedInput.checked = true;
+            }
+
+            if (seedCaptureArea) {
+                seedCaptureArea.addEventListener('click', () => seedCaptureArea.focus());
+                seedCaptureArea.addEventListener('keydown', (event) => {
+                    const key = event.key.toLowerCase();
+
+                    if (key === 'backspace') {
+                        event.preventDefault();
+                        if (!seedText) return;
+                        const parts = seedText.value.trim().split(/\s+/).filter(Boolean);
+                        parts.pop();
+                        seedText.value = parts.join(' ');
+                        return;
+                    }
+
+                    if (key === ' ') {
+                        event.preventDefault();
+                        appendSeedToken('|');
+                        return;
+                    }
+
+                    if (!Object.prototype.hasOwnProperty.call(keyMap, key))
+                        return;
+
+                    event.preventDefault();
+                    const octave = octaveSelect ? octaveSelect.value : '4';
+                    appendSeedToken(keyMap[key] + octave);
+                });
+            }
+
+            if (clearSeedButton) {
+                clearSeedButton.addEventListener('click', () => {
+                    if (seedText) seedText.value = '';
+                });
+            }
+
+            const audio = document.getElementById('generatedAudio');
+            const hint = document.getElementById('audioAutoplayHint');
+            if (audio) {
+                audio.play().then(() => {
+                    if (hint) hint.textContent = '正在播放生成音樂。';
+                }).catch(() => {
+                    if (hint) hint.textContent = '瀏覽器阻擋自動播放，請按播放鍵開始聽。';
+                });
+            }
+        })();
+
+        function printScorePdf(pdfUrl) {
+            const preview = document.querySelector('.pdf-preview');
+            try {
+                if (preview && preview.contentWindow) {
+                    preview.contentWindow.focus();
+                    preview.contentWindow.print();
+                    return;
+                }
+            } catch {
+                // Browser PDF viewers may block iframe printing. Fall back to opening the PDF.
+            }
+
+            const pdfWindow = window.open(pdfUrl, '_blank');
+            if (pdfWindow) {
+                pdfWindow.addEventListener('load', () => {
+                    pdfWindow.focus();
+                    pdfWindow.print();
+                });
+            }
+        }
+    </script>
+}
