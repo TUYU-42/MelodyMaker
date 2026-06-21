@@ -3,10 +3,10 @@ namespace MelodyMaker.Core.Models;
 public sealed class MelodyRequest
 {
     public string ChordText { get; set; } = string.Empty;
-    public int Tempo { get; set; } = 80;
-    public string Style { get; set; } = "Pop";
+    public int Tempo { get; set; } = 60;
+    public string Style { get; set; } = "江南風格";
     public string Emotion { get; set; } = "Neutral";
-    public string Key { get; set; } = "C";
+    public string Key { get; set; } = "Auto";
     public string Mode { get; set; } = "Auto";
     public string SubDensity { get; set; } = "Medium";
     public int SongMinutes { get; set; } = 1;

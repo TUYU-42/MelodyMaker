@@ -113,7 +113,7 @@ public sealed class MelodyGenerator
         public bool ContainsBar(int barIndex) => barIndex >= StartBar && barIndex <= EndBar;
     }
 
-    private sealed record ChordInfo(string Code, ChordDegree Degree, int RootSemitone, string DisplayName);
+    private sealed record ChordInfo(string Code, ChordDegree Degree, int RootSemitone, string DisplayName, bool MinorKeyContext = false);
 
     private sealed record NoteChoice(string Pitch, int Semitone, bool IsChordTone);
 
@@ -158,8 +158,9 @@ public sealed class MelodyGenerator
         ModeType mode = ResolveModeForStyle(style, ParseMode(request.Mode), emotion);
         int tempo = NormalizeTempo(request.Tempo);
         int barCount = GetSongBarCount(request.SongMinutes, tempo);
-        int keyRoot = GetSelectedKeyRootSemitone(request.Key);
-        bool minorKey = IsMinorKey(request.Key, mode, emotion);
+        string effectiveKey = GetEffectiveKeyText(request.Key, style, emotion);
+        int keyRoot = GetSelectedKeyRootSemitone(effectiveKey);
+        bool minorKey = IsMinorKey(effectiveKey, mode);
 
         // Step 10：Gen Chord 按鈕若是江南風格，也改成原 WinForms 的 melody-first 反推和弦。
         if (style == MelodyStyle.JiangNan && string.IsNullOrWhiteSpace(request.ChordText))
@@ -173,7 +174,7 @@ public sealed class MelodyGenerator
                 mode,
                 keyRoot,
                 minorKey,
-                GetChordInfo(GetChordCodeFromDegree(ChordDegree.I)),
+                GetChordInfo(GetChordCodeFromDegree(ChordDegree.I), keyRoot, minorKey),
                 seedPitches);
 
             LegacyMelodyDraft? draft = TryBuildXmlMelodyDraftAndInferChords(
@@ -201,8 +202,9 @@ public sealed class MelodyGenerator
         ModeType mode = ResolveModeForStyle(style, ParseMode(request.Mode), emotion);
         int tempo = NormalizeTempo(request.Tempo);
         int barCount = GetSongBarCount(request.SongMinutes, tempo);
-        int keyRoot = GetSelectedKeyRootSemitone(request.Key);
-        bool minorKey = IsMinorKey(request.Key, mode, emotion);
+        string effectiveKey = GetEffectiveKeyText(request.Key, style, emotion);
+        int keyRoot = GetSelectedKeyRootSemitone(effectiveKey);
+        bool minorKey = IsMinorKey(effectiveKey, mode);
 
         string chordText = NormalizeOrGenerateChordText(request.ChordText, style, emotion, barCount);
         if (!ValidateChordProgression(chordText))
@@ -226,7 +228,7 @@ public sealed class MelodyGenerator
                 mode,
                 keyRoot,
                 minorKey,
-                GetChordInfo(GetChordCodeFromDegree(ChordDegree.I)),
+                GetChordInfo(GetChordCodeFromDegree(ChordDegree.I), keyRoot, minorKey),
                 seedPitches);
 
             legacyMelodyDraft = TryBuildXmlMelodyDraftAndInferChords(
@@ -250,7 +252,7 @@ public sealed class MelodyGenerator
                 mode,
                 keyRoot,
                 minorKey,
-                GetChordInfo(GetChordCodeAtBar(chordText, 0)),
+                GetChordInfo(GetChordCodeAtBar(chordText, 0), keyRoot, minorKey),
                 seedPitches)
             : null;
 
@@ -271,7 +273,7 @@ public sealed class MelodyGenerator
         string mainYNote = bestCandidate.MainYNote;
         string subYNote = bestCandidate.SubYNote;
 
-        string analysisReport = AnalyzeGeneratedMusic(mainYNote, subYNote, chordText, style, emotion, barCount, seedPitches, request.UseSeedInput, request.SeedMode);
+        string analysisReport = AnalyzeGeneratedMusic(mainYNote, subYNote, chordText, style, emotion, barCount, keyRoot, minorKey, seedPitches, request.UseSeedInput, request.SeedMode);
         analysisReport += BuildStep8ThemeSeedReport(jiangNanThemeSeed);
         if (legacyMelodyDraft is not null)
             analysisReport += Environment.NewLine + Environment.NewLine + legacyMelodyDraft.Report;
@@ -279,13 +281,13 @@ public sealed class MelodyGenerator
 
         return new MelodyResult
         {
-            Title = BuildTitle(style, emotion, request.Key, request.Mode),
+            Title = BuildTitle(style, emotion, effectiveKey, mode.ToString()),
             ChordText = chordText,
             MainYNote = mainYNote,
             SubYNote = subYNote,
             Tempo = tempo,
-            Key = NormalizeKeyName(request.Key, minorKey),
-            Mode = mode == ModeType.Auto ? (minorKey ? "Minor" : "Major") : mode.ToString(),
+            Key = NormalizeKeyName(effectiveKey),
+            Mode = mode.ToString(),
             AnalysisReport = analysisReport
         };
     }
@@ -302,8 +304,9 @@ public sealed class MelodyGenerator
         EmotionType emotion = ParseEmotion(request.Emotion);
         ModeType mode = ResolveModeForStyle(style, ParseMode(request.Mode), emotion);
         int tempo = NormalizeTempo(request.Tempo);
-        int keyRoot = GetSelectedKeyRootSemitone(request.Key);
-        bool minorKey = IsMinorKey(request.Key, mode, emotion);
+        string effectiveKey = GetEffectiveKeyText(request.Key, style, emotion);
+        int keyRoot = GetSelectedKeyRootSemitone(effectiveKey);
+        bool minorKey = IsMinorKey(effectiveKey, mode);
 
         string mainYNote = NormalizeYNoteText(request.ExpertMainYNote);
         string subYNote = NormalizeYNoteText(request.ExpertSubYNote);
@@ -351,6 +354,8 @@ public sealed class MelodyGenerator
             style,
             emotion,
             inferredBars,
+            keyRoot,
+            minorKey,
             Array.Empty<string>(),
             false,
             request.SeedMode);
@@ -361,13 +366,13 @@ public sealed class MelodyGenerator
 
         return new MelodyResult
         {
-            Title = BuildTitle(style, emotion, request.Key, request.Mode) + " / Expert Mode",
+            Title = BuildTitle(style, emotion, effectiveKey, mode.ToString()) + " / Expert Mode",
             ChordText = chordText,
             MainYNote = mainYNote,
             SubYNote = subYNote,
             Tempo = tempo,
-            Key = NormalizeKeyName(request.Key, minorKey),
-            Mode = mode == ModeType.Auto ? (minorKey ? "Minor" : "Major") : mode.ToString(),
+            Key = NormalizeKeyName(effectiveKey),
+            Mode = mode.ToString(),
             AnalysisReport = report
         };
     }
@@ -382,8 +387,9 @@ public sealed class MelodyGenerator
         EmotionType emotion = ParseEmotion(request.Emotion);
         ModeType mode = ResolveModeForStyle(style, ParseMode(request.Mode), emotion);
         int tempo = NormalizeTempo(request.Tempo);
-        int keyRoot = GetSelectedKeyRootSemitone(request.Key);
-        bool minorKey = IsMinorKey(request.Key, mode, emotion);
+        string effectiveKey = GetEffectiveKeyText(request.Key, style, emotion);
+        int keyRoot = GetSelectedKeyRootSemitone(effectiveKey);
+        bool minorKey = IsMinorKey(effectiveKey, mode);
 
         string mainYNote = NormalizeYNoteText(request.ExpertMainYNote);
         if (string.IsNullOrWhiteSpace(mainYNote))
@@ -420,6 +426,8 @@ public sealed class MelodyGenerator
             style,
             emotion,
             inferredBars,
+            keyRoot,
+            minorKey,
             Array.Empty<string>(),
             false,
             request.SeedMode);
@@ -430,13 +438,13 @@ public sealed class MelodyGenerator
 
         return new MelodyResult
         {
-            Title = BuildTitle(style, emotion, request.Key, request.Mode) + " / Updated Counter Melody",
+            Title = BuildTitle(style, emotion, effectiveKey, mode.ToString()) + " / Updated Counter Melody",
             ChordText = chordText,
             MainYNote = mainYNote,
             SubYNote = subYNote,
             Tempo = tempo,
-            Key = NormalizeKeyName(request.Key, minorKey),
-            Mode = mode == ModeType.Auto ? (minorKey ? "Minor" : "Major") : mode.ToString(),
+            Key = NormalizeKeyName(effectiveKey),
+            Mode = mode.ToString(),
             AnalysisReport = report
         };
     }
@@ -451,6 +459,9 @@ public sealed class MelodyGenerator
 
         List<string> mainBars = SplitYNoteIntoBars(result.MainYNote, barCount);
         List<string> subBars = SplitYNoteIntoBars(result.SubYNote, barCount);
+        int keyRoot = GetSelectedKeyRootSemitone(result.Key);
+        bool minorKey = NormalizeText(result.Key).Contains("minor", StringComparison.OrdinalIgnoreCase) ||
+                        NormalizeText(result.Mode).Equals("Minor", StringComparison.OrdinalIgnoreCase);
 
         List<MelodyBarEditRow> rows = new(capacity: barCount);
         for (int bar = 0; bar < barCount; bar++)
@@ -460,7 +471,7 @@ public sealed class MelodyGenerator
             {
                 BarNumber = bar + 1,
                 ChordCode = chordCode,
-                ChordName = GetChordDisplayName(chordCode),
+                ChordName = GetChordDisplayName(chordCode, keyRoot, minorKey),
                 MainYNote = bar < mainBars.Count ? mainBars[bar] : "0001",
                 SubYNote = bar < subBars.Count ? subBars[bar] : "0001",
                 MainPreview = YNoteToPreview(bar < mainBars.Count ? mainBars[bar] : string.Empty),
@@ -528,32 +539,80 @@ public sealed class MelodyGenerator
 
         return style switch
         {
-            MelodyStyle.JiangNan => ModeType.Pentatonic,
-            MelodyStyle.Jazz => emotion == EmotionType.Sad ? ModeType.Dorian : ModeType.Mixolydian,
+            MelodyStyle.JiangNan => ModeType.Major,
+            MelodyStyle.Jazz => emotion == EmotionType.Tense
+                ? ModeType.Mixolydian
+                : emotion == EmotionType.Sad ? ModeType.Dorian : ModeType.Major,
             _ => emotion == EmotionType.Sad ? ModeType.Minor : ModeType.Major
         };
     }
 
     private static string NormalizeText(string? text) => string.IsNullOrWhiteSpace(text) ? string.Empty : text.Trim();
 
-    private static int NormalizeTempo(int tempo) => Math.Clamp(tempo <= 0 ? 80 : tempo, 40, 240);
+    private static int NormalizeTempo(int tempo) => Math.Clamp(tempo <= 0 ? 60 : tempo, 40, 240);
 
     private static int GetSongBarCount(int songMinutes, int tempo)
     {
-        int minutes = Math.Clamp(songMinutes <= 0 ? 1 : songMinutes, 1, 5);
-        int bars = (int)Math.Round(minutes * tempo / 4.0, MidpointRounding.AwayFromZero);
+        int minutes = Math.Clamp(songMinutes <= 0 ? 1 : songMinutes, 1, 10);
+        int bars = (int)Math.Round(minutes * tempo / 4.0);
 
-        // Web 版先做保護：避免一次輸出太長造成 MuseScore 轉檔等待過久。
-        return Math.Clamp(bars, 4, 80);
+        if (bars < 4)
+            bars = 4;
+
+        if (bars % 4 != 0)
+            bars = ((bars / 4) + 1) * 4;
+
+        return bars;
     }
 
-    private static string NormalizeKeyName(string? key, bool minorKey)
+    private static string NormalizeKeyName(string? key)
     {
         string value = NormalizeText(key);
-        if (string.IsNullOrWhiteSpace(value) || value.Equals("Auto", StringComparison.OrdinalIgnoreCase))
-            return minorKey ? "A minor" : "C";
+        return string.IsNullOrWhiteSpace(value) ? "C" : value;
+    }
 
-        return value;
+    private static string GetEffectiveKeyText(string? key, MelodyStyle style, EmotionType emotion)
+    {
+        string value = NormalizeText(key);
+        if (!string.IsNullOrWhiteSpace(value) && !value.Equals("Auto", StringComparison.OrdinalIgnoreCase))
+            return value;
+
+        return GetAutoKeyText(style, emotion);
+    }
+
+    private static string GetAutoKeyText(MelodyStyle style, EmotionType emotion)
+    {
+        if (style == MelodyStyle.JiangNan)
+            return "C";
+
+        if (style == MelodyStyle.Pop)
+        {
+            if (emotion == EmotionType.Sad) return "A minor";
+            if (emotion == EmotionType.Calm) return "F";
+            if (emotion == EmotionType.Bright) return "G";
+            if (emotion == EmotionType.Energetic) return "D";
+            if (emotion == EmotionType.Tense) return "E minor";
+            return "C";
+        }
+
+        if (style == MelodyStyle.JPop)
+        {
+            if (emotion == EmotionType.Sad) return "E minor";
+            if (emotion == EmotionType.Bright) return "G";
+            if (emotion == EmotionType.Energetic) return "A";
+            if (emotion == EmotionType.Tense) return "F# minor";
+            return "G";
+        }
+
+        if (style == MelodyStyle.Jazz)
+        {
+            if (emotion == EmotionType.Sad) return "Bb";
+            if (emotion == EmotionType.Bright) return "F";
+            if (emotion == EmotionType.Energetic) return "Eb";
+            return "C";
+        }
+
+        return "C";
     }
 
     private static string BuildTitle(MelodyStyle style, EmotionType emotion, string? key, string? mode)
@@ -1379,10 +1438,9 @@ public sealed class MelodyGenerator
         List<TimeSectionInfo> sections = BuildTimeSections(barCount);
         List<string> mainBars = new(capacity: barCount);
         string? previousPitch = null;
-
         for (int bar = 0; bar < barCount; bar++)
         {
-            ChordInfo chord = GetChordInfo(GetChordCodeAtBar(chordText, bar));
+            ChordInfo chord = GetChordInfo(GetChordCodeAtBar(chordText, bar), keyRoot, minorKey);
             TimeSectionInfo section = GetSectionForBar(sections, bar);
             double progress = barCount <= 1 ? 1.0 : bar / (double)(barCount - 1);
             bool isPhraseEnding = (bar + 1) % 4 == 0 || bar == barCount - 1;
@@ -1443,19 +1501,19 @@ public sealed class MelodyGenerator
         bool minorKey,
         out string breakdown)
     {
-        int harmonyScore = CalculateHarmonyScore(mainYNote, subYNote, style, emotion);
+        int harmonyScore = CalculateHarmonyScore(mainYNote, subYNote, style, emotion, keyRoot);
         GetHarmonyScoreTargetRange(style, emotion, out int targetMin, out int targetMax, out int targetCenter, out int _, out int tolerance);
         int harmonyDistance = GetScoreRangeDistance(harmonyScore, targetMin, targetMax);
-        double chordSupport = CalculateChordSupportRate(mainYNote, chordText, barCount);
+        double chordSupport = CalculateChordSupportRate(mainYNote, chordText, barCount, keyRoot, minorKey);
         int mainLargeLeaps = CountMainMelodyLargeLeaps(mainYNote);
         int subLargeLeaps = CountSubMelodyLargeLeaps(subYNote);
         int parallelPerfect = CountParallelPerfectIntervals(mainYNote, subYNote);
-        int sharpCount = CountSharpNotesInYNote(mainYNote);
+        int sharpCount = CountStyleColorNotesInYNote(mainYNote, style, keyRoot);
         double restRate = CalculateRestRate(mainYNote);
         int rhythmDiversity = CountRhythmKinds(mainYNote);
         int phraseEndingScore = ScorePhraseEndings(mainYNote, chordText, barCount, style, keyRoot, minorKey);
         int contourScore = ScoreMelodyContourOriginalStyle(mainYNote, style, emotion);
-        int stylePenalty = GetStyleCharacterPenalty(mainYNote, subYNote, style, emotion);
+        int stylePenalty = GetStyleCharacterPenalty(mainYNote, subYNote, style, emotion, keyRoot);
         int jiangNanJourneyScore = style == MelodyStyle.JiangNan
             ? ScoreJiangNanFullSongJourney(chordText, mainYNote, barCount, keyRoot, minorKey)
             : 0;
@@ -1525,7 +1583,7 @@ public sealed class MelodyGenerator
             if (string.IsNullOrWhiteSpace(lastPitch) || lastPitch == "00")
                 continue;
 
-            ChordInfo chord = GetChordInfo(GetChordCodeAtBar(chordText, bar));
+            ChordInfo chord = GetChordInfo(GetChordCodeAtBar(chordText, bar), keyRoot, minorKey);
             if (IsChordSupportedPitch(lastPitch, chord)) score += bar == barCount - 1 ? 60 : 28;
             if (NormalizeSemitone(PitchToAbsoluteSemitone(lastPitch)) == chord.RootSemitone) score += bar == barCount - 1 ? 50 : 18;
             if (style == MelodyStyle.JiangNan && IsJiangNanCadencePitchClass(lastPitch, keyRoot)) score += 22;
@@ -1631,14 +1689,13 @@ public sealed class MelodyGenerator
         List<TimeSectionInfo> sections = BuildTimeSections(barCount);
         List<string> draftBars = new(capacity: barCount);
         string previousLastPitch = "00";
-
         for (int barIndex = 0; barIndex < barCount; barIndex++)
         {
             TimeSectionInfo section = GetSectionForBar(sections, barIndex);
             bool isPhraseEnding = (barIndex + 1) % 4 == 0 || barIndex == barCount - 1;
             bool isSongEnding = barIndex == barCount - 1;
             ChordDegree provisionalDegree = GetXmlDraftProvisionalDegree(style, emotion, section.Role, barIndex, barCount);
-            ChordInfo provisionalChord = GetChordInfo(GetChordCodeFromDegree(provisionalDegree));
+            ChordInfo provisionalChord = GetChordInfo(GetChordCodeFromDegree(provisionalDegree), keyRoot, minorKey);
             string? barYNote = null;
 
             if (style == MelodyStyle.JiangNan && jiangNanThemeSeed is not null && barIndex < 4)
@@ -2146,9 +2203,9 @@ public sealed class MelodyGenerator
         if (events.Count == 0)
             return -9999;
 
-        HashSet<int> chordTones = GetChordTonePitchClassesForDegree(degree, keyRoot);
-        int rootPc = NormalizeSemitone(keyRoot + GetDegreeRootSemitone(degree));
-        int thirdPc = GetDegreeThirdPitchClass(degree, keyRoot);
+        HashSet<int> chordTones = GetChordTonePitchClassesForDegree(degree, keyRoot, minorKey);
+        int rootPc = NormalizeSemitone(GetDegreeRootSemitone(degree, keyRoot, minorKey));
+        int thirdPc = GetDegreeThirdPitchClass(degree, keyRoot, minorKey);
         int fifthPc = NormalizeSemitone(rootPc + (degree == ChordDegree.viiDim ? 6 : 7));
         int score = 0;
         int nonRestCount = 0;
@@ -2230,17 +2287,10 @@ public sealed class MelodyGenerator
         return score;
     }
 
-    private static HashSet<int> GetChordTonePitchClassesForDegree(ChordDegree degree, int keyRoot)
+    private static HashSet<int> GetChordTonePitchClassesForDegree(ChordDegree degree, int keyRoot, bool minorKey)
     {
-        int root = NormalizeSemitone(keyRoot + GetDegreeRootSemitone(degree));
-        int[] intervals = degree switch
-        {
-            ChordDegree.ii or ChordDegree.iii or ChordDegree.vi or ChordDegree.iv => [0, 3, 7],
-            ChordDegree.viiDim => [0, 3, 6],
-            ChordDegree.V7 or ChordDegree.III7 or ChordDegree.VI7 => [0, 4, 7, 10],
-            _ => [0, 4, 7]
-        };
-
+        int root = NormalizeSemitone(GetDegreeRootSemitone(degree, keyRoot, minorKey));
+        int[] intervals = GetChordIntervals(degree, minorKey);
         return intervals.Select(i => NormalizeSemitone(root + i)).ToHashSet();
     }
 
@@ -2266,10 +2316,53 @@ public sealed class MelodyGenerator
         };
     }
 
-    private static int GetDegreeThirdPitchClass(ChordDegree degree, int keyRoot)
+    private static int GetDegreeRootSemitone(ChordDegree degree, int keyRoot, bool minorKey)
     {
-        int root = NormalizeSemitone(keyRoot + GetDegreeRootSemitone(degree));
-        int third = degree is ChordDegree.ii or ChordDegree.iii or ChordDegree.vi or ChordDegree.iv or ChordDegree.viiDim ? 3 : 4;
+        int root = NormalizeSemitone(keyRoot);
+
+        if (!minorKey)
+            return NormalizeSemitone(root + GetDegreeRootSemitone(degree));
+
+        return NormalizeSemitone(degree switch
+        {
+            ChordDegree.I => root,
+            ChordDegree.ii => root + 2,
+            ChordDegree.iii or ChordDegree.bIII => root + 3,
+            ChordDegree.IV or ChordDegree.iv => root + 5,
+            ChordDegree.V or ChordDegree.V7 => root + 7,
+            ChordDegree.vi or ChordDegree.bVI => root + 8,
+            ChordDegree.viiDim => root + 11,
+            ChordDegree.bVII => root + 10,
+            ChordDegree.II => root + 2,
+            ChordDegree.III7 => root + 3,
+            ChordDegree.VI7 => root + 8,
+            _ => root
+        });
+    }
+
+    private static int[] GetChordIntervals(ChordDegree degree, bool minorKey)
+    {
+        if (degree == ChordDegree.viiDim)
+            return [0, 3, 6];
+
+        if (degree is ChordDegree.V7 or ChordDegree.III7 or ChordDegree.VI7 or ChordDegree.II)
+            return [0, 4, 7, 10];
+
+        return IsMinorTriadDegree(degree, minorKey) ? [0, 3, 7] : [0, 4, 7];
+    }
+
+    private static bool IsMinorTriadDegree(ChordDegree degree, bool minorKey)
+    {
+        if (!minorKey)
+            return degree is ChordDegree.ii or ChordDegree.iii or ChordDegree.vi or ChordDegree.iv;
+
+        return degree is ChordDegree.I or ChordDegree.IV or ChordDegree.iv;
+    }
+
+    private static int GetDegreeThirdPitchClass(ChordDegree degree, int keyRoot, bool minorKey)
+    {
+        int root = NormalizeSemitone(GetDegreeRootSemitone(degree, keyRoot, minorKey));
+        int third = IsMinorTriadDegree(degree, minorKey) || degree == ChordDegree.viiDim ? 3 : 4;
         return NormalizeSemitone(root + third);
     }
 
@@ -3320,12 +3413,15 @@ public sealed class MelodyGenerator
         if (_repository.PitchPatterns.Count == 0 || _repository.RhythmPatterns.Count == 0)
             return null;
 
-        List<LegacyRhythmPattern> rhythms = _repository.RhythmPatterns
-            .Where(r => r.TotalTick == TicksPerBar && r.Length >= 2 && r.Length <= 12)
-            .OrderByDescending(r => GetLegacyRhythmStyleScore(style, emotion, sectionRole, isPhraseEnding, isSongEnding, r.Pattern, r.Length, r.TotalTick))
-            .ThenBy(_ => Random.Shared.Next())
-            .Take(56)
-            .ToList();
+        List<LegacyRhythmPattern> rhythms = PickRhythmCandidatesFromRepository(
+            style,
+            emotion,
+            sectionRole,
+            isPhraseEnding,
+            isSongEnding,
+            minLength: 2,
+            maxLength: 12,
+            maxCount: 56);
 
         if (rhythms.Count == 0)
             return null;
@@ -4088,16 +4184,22 @@ public sealed class MelodyGenerator
         bool isSongEnding,
         string? previousPitch)
     {
-        List<LegacyRhythmPattern> rhythms = _repository.RhythmPatterns
-            .Where(r => r.TotalTick == TicksPerBar && r.Length >= 4 && r.Length <= 11)
-            .ToList();
+        List<LegacyRhythmPattern> rhythms = PickRhythmCandidatesFromRepository(
+            MelodyStyle.JiangNan,
+            emotion,
+            sectionRole,
+            isPhraseEnding,
+            isSongEnding,
+            minLength: 4,
+            maxLength: 11,
+            maxCount: 42);
 
         if (rhythms.Count == 0 || _repository.PitchPatterns.Count == 0)
             return null;
 
         List<(LegacyPitchPattern Pitch, LegacyRhythmPattern Rhythm, int Score)> candidates = new();
 
-        foreach (LegacyRhythmPattern rhythm in SampleRhythmPatterns(rhythms, maxCount: 42, seed: barIndex * 19 + keyRoot))
+        foreach (LegacyRhythmPattern rhythm in rhythms)
         {
             foreach (LegacyPitchPattern pitch in SamplePitchPatternsByLength(rhythm.Length, maxCount: 48, seed: barIndex * 37 + rhythm.Length * 11))
             {
@@ -4234,23 +4336,90 @@ public sealed class MelodyGenerator
         if (_repository.RhythmPatterns.Count == 0)
             return null;
 
-        List<(LegacyRhythmPattern Rhythm, int Score)> candidates = _repository.RhythmPatterns
-            .Where(r => r.TotalTick == TicksPerBar && r.Length > 0 && r.Pattern.Length >= r.Length * 2)
-            .Select(r => (Rhythm: r, Score: GetLegacyRhythmStyleScore(style, emotion, role, isPhraseEnding, isSongEnding, r.Pattern, r.Length, r.TotalTick) + Random.Shared.Next(0, 7)))
-            .OrderByDescending(x => x.Score)
-            .Take(18)
-            .ToList();
+        List<LegacyRhythmPattern> candidates = PickRhythmCandidatesFromRepository(
+            style,
+            emotion,
+            role,
+            isPhraseEnding,
+            isSongEnding,
+            minLength: 1,
+            maxLength: 12,
+            maxCount: 1);
 
         if (candidates.Count == 0)
             return null;
 
-        int bestScore = candidates[0].Score;
-        List<LegacyRhythmPattern> nearBest = candidates
-            .Where(x => x.Score >= bestScore - 12)
-            .Select(x => x.Rhythm)
+        return candidates[0].Pattern;
+    }
+
+    private List<LegacyRhythmPattern> PickRhythmCandidatesFromRepository(
+        MelodyStyle style,
+        EmotionType emotion,
+        TimeSectionRole role,
+        bool isPhraseEnding,
+        bool isSongEnding,
+        int minLength,
+        int maxLength,
+        int maxCount)
+    {
+        List<LegacyRhythmPattern> source = _repository.RhythmPatterns
+            .Where(r =>
+                r.TotalTick == TicksPerBar &&
+                r.Length >= minLength &&
+                r.Length <= maxLength &&
+                r.Pattern.Length >= r.Length * 2)
             .ToList();
 
-        return nearBest[Random.Shared.Next(nearBest.Count)].Pattern;
+        if (source.Count == 0)
+            return new List<LegacyRhythmPattern>();
+
+        List<LegacyRhythmPattern> selected = new(capacity: Math.Min(maxCount, source.Count));
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        int attempts = Math.Max(maxCount * 4, 12);
+
+        for (int attempt = 0; attempt < attempts && selected.Count < maxCount; attempt++)
+        {
+            int bestScore = int.MinValue;
+            List<LegacyRhythmPattern> bestRows = new();
+
+            foreach (LegacyRhythmPattern rhythm in source)
+            {
+                int score = GetLegacyRhythmStyleScore(
+                    style,
+                    emotion,
+                    role,
+                    isPhraseEnding,
+                    isSongEnding,
+                    rhythm.Pattern,
+                    rhythm.Length,
+                    rhythm.TotalTick);
+
+                score += Random.Shared.Next(0, 6);
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestRows.Clear();
+                    bestRows.Add(rhythm);
+                }
+                else if (score == bestScore)
+                {
+                    bestRows.Add(rhythm);
+                }
+            }
+
+            if (bestRows.Count == 0)
+                continue;
+
+            LegacyRhythmPattern chosen = bestRows[Random.Shared.Next(bestRows.Count)];
+            if (seen.Add(chosen.Pattern))
+                selected.Add(chosen);
+        }
+
+        if (selected.Count > 0)
+            return selected;
+
+        return [source[Random.Shared.Next(source.Count)]];
     }
 
     private static string PickRhythmPattern(MelodyStyle style, EmotionType emotion, TimeSectionRole role, bool isPhraseEnding, bool isSongEnding)
@@ -4428,7 +4597,7 @@ public sealed class MelodyGenerator
         {
             bool phraseEnding = (bar + 1) % 4 == 0 || bar == mainBars.Count - 1;
             bool songEnding = bar == mainBars.Count - 1;
-            ChordInfo chord = GetChordInfo(GetChordCodeAtBar(chordText, bar));
+            ChordInfo chord = GetChordInfo(GetChordCodeAtBar(chordText, bar), keyRoot, minorKey);
             List<(string Pitch, string Rhythm)> events = ParseYNoteEvents(mainBars[bar]);
 
             if (events.Count == 0)
@@ -4908,14 +5077,7 @@ public sealed class MelodyGenerator
 
     private static List<string> GetChordPitches(ChordInfo chord, int octave)
     {
-        int[] intervals = chord.Degree switch
-        {
-            ChordDegree.ii or ChordDegree.iii or ChordDegree.vi or ChordDegree.iv => [0, 3, 7],
-            ChordDegree.viiDim => [0, 3, 6],
-            ChordDegree.V7 or ChordDegree.III7 or ChordDegree.VI7 => [0, 4, 7, 10],
-            _ => [0, 4, 7]
-        };
-
+        int[] intervals = GetChordIntervals(chord.Degree, chord.MinorKeyContext);
         return intervals.Select(i => PitchFromAbsoluteSemitone(octave * 12 + NormalizeSemitone(chord.RootSemitone + i))).ToList();
     }
 
@@ -4959,15 +5121,19 @@ public sealed class MelodyGenerator
         return [0, 2, 4, 5, 7, 9, 11];
     }
 
-    private static bool IsMinorKey(string? key, ModeType mode, EmotionType emotion)
+    private static bool IsMinorKey(string? key, ModeType mode)
     {
         string value = NormalizeText(key).ToLowerInvariant();
-        return mode == ModeType.Minor || value.Contains("minor") || value.Contains("小調") || emotion == EmotionType.Sad;
+        return mode == ModeType.Minor || value.Contains("minor") || value.Contains("小調");
     }
 
     private static int GetSelectedKeyRootSemitone(string? key)
     {
-        string value = NormalizeText(key).Replace(" minor", string.Empty, StringComparison.OrdinalIgnoreCase).Trim();
+        string value = NormalizeText(key)
+            .Replace("minor", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("小調", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Trim();
+
         return value switch
         {
             "C" => 0,
@@ -4981,37 +5147,35 @@ public sealed class MelodyGenerator
             "G#" or "Ab" => 8,
             "A" => 9,
             "A#" or "Bb" => 10,
-            "B" => 11,
+            "B" or "Cb" => 11,
             _ => 0
         };
     }
 
     private static ChordInfo GetChordInfo(string chordCode)
     {
+        // Legacy/default path: keep C-major-relative semantics for progression scoring,
+        // where only Degree is relevant. Generation paths should use the overload
+        // with keyRoot/minorKey so XC/XD/XF... become scale degrees in the selected key.
+        return GetChordInfo(chordCode, keyRoot: 0, minorKey: false);
+    }
+
+    private static ChordInfo GetChordInfo(string chordCode, int keyRoot, bool minorKey)
+    {
         if (string.IsNullOrWhiteSpace(chordCode) || chordCode.Length < 2)
-            return new ChordInfo("XC501", ChordDegree.I, 0, "C");
+            return new ChordInfo("XC501", ChordDegree.I, NormalizeSemitone(keyRoot), PitchClassToDisplayName(keyRoot), minorKey);
 
         ChordDegree degree = GetChordDegree(chordCode);
-        int root = degree switch
-        {
-            ChordDegree.I => 0,
-            ChordDegree.ii => 2,
-            ChordDegree.iii => 4,
-            ChordDegree.IV => 5,
-            ChordDegree.V or ChordDegree.V7 => 7,
-            ChordDegree.vi => 9,
-            ChordDegree.viiDim => 11,
-            ChordDegree.bIII => 3,
-            ChordDegree.bVI => 8,
-            ChordDegree.bVII => 10,
-            ChordDegree.II => 2,
-            ChordDegree.III7 => 4,
-            ChordDegree.VI7 => 9,
-            ChordDegree.iv => 5,
-            _ => LetterCodeToSemitone(chordCode[1])
-        };
+        int root = degree == ChordDegree.Unknown
+            ? NormalizeSemitone(keyRoot + LetterCodeToSemitone(chordCode[1]))
+            : GetDegreeRootSemitone(degree, keyRoot, minorKey);
 
-        return new ChordInfo(chordCode, degree, NormalizeSemitone(root), GetChordDisplayName(chordCode));
+        return new ChordInfo(
+            chordCode,
+            degree,
+            NormalizeSemitone(root),
+            GetChordDisplayName(chordCode, keyRoot, minorKey),
+            minorKey);
     }
 
     private static ChordDegree GetChordDegree(string chordCode)
@@ -5044,30 +5208,27 @@ public sealed class MelodyGenerator
 
     private static string GetChordDisplayName(string chordCode)
     {
+        return GetChordDisplayName(chordCode, keyRoot: 0, minorKey: false);
+    }
+
+    private static string GetChordDisplayName(string chordCode, int keyRoot, bool minorKey)
+    {
         if (string.IsNullOrWhiteSpace(chordCode) || chordCode.Length < 2)
             return chordCode;
 
-        char root = chordCode[1];
-        char quality = chordCode.Length >= 3 ? chordCode[2] : '5';
+        ChordDegree degree = GetChordDegree(chordCode);
+        if (degree == ChordDegree.Unknown)
+            return chordCode;
 
-        return root switch
-        {
-            'C' => quality == '7' ? "C7" : "C",
-            'D' => quality == '7' ? "D7" : "Dm",
-            'E' => quality == '7' ? "E7" : "Em",
-            'F' => quality == '7' ? "F7" : "F",
-            'G' => quality == '7' ? "G7" : "G",
-            'A' => quality == '7' ? "A7" : "Am",
-            'B' => "Bdim",
-            'H' => "Eb",
-            'L' => "Ab",
-            'K' => "Bb",
-            '2' => "D",
-            '3' => "E7",
-            '6' => "A7",
-            'm' => "Fm",
-            _ => chordCode
-        };
+        string rootName = PitchClassToDisplayName(GetDegreeRootSemitone(degree, keyRoot, minorKey));
+
+        if (degree == ChordDegree.viiDim)
+            return rootName + "dim";
+
+        if (degree is ChordDegree.V7 or ChordDegree.III7 or ChordDegree.VI7 or ChordDegree.II)
+            return rootName + "7";
+
+        return IsMinorTriadDegree(degree, minorKey) ? rootName + "m" : rootName;
     }
 
     private static int LetterCodeToSemitone(char root)
@@ -5092,16 +5253,29 @@ public sealed class MelodyGenerator
         };
     }
 
+    private static string PitchClassToDisplayName(int pitchClass)
+    {
+        return NormalizeSemitone(pitchClass) switch
+        {
+            0 => "C",
+            1 => "C#",
+            2 => "D",
+            3 => "Eb",
+            4 => "E",
+            5 => "F",
+            6 => "F#",
+            7 => "G",
+            8 => "Ab",
+            9 => "A",
+            10 => "Bb",
+            11 => "B",
+            _ => "C"
+        };
+    }
+
     private static HashSet<int> GetChordTonePitchClasses(ChordInfo chord)
     {
-        int[] intervals = chord.Degree switch
-        {
-            ChordDegree.ii or ChordDegree.iii or ChordDegree.vi or ChordDegree.iv => [0, 3, 7],
-            ChordDegree.viiDim => [0, 3, 6],
-            ChordDegree.V7 or ChordDegree.III7 or ChordDegree.VI7 => [0, 4, 7, 10],
-            _ => [0, 4, 7]
-        };
-
+        int[] intervals = GetChordIntervals(chord.Degree, chord.MinorKeyContext);
         return intervals.Select(i => NormalizeSemitone(chord.RootSemitone + i)).ToHashSet();
     }
 
@@ -5334,7 +5508,7 @@ public sealed class MelodyGenerator
             if (events[i].Pitch == "00")
                 continue;
 
-            string sourcePitch = seedPitches[(barIndex + replaced) % seedPitches.Count];
+            string sourcePitch = seedPitches[replaced % seedPitches.Count];
             if (sourcePitch == "00")
             {
                 replaced++;
@@ -5357,6 +5531,8 @@ public sealed class MelodyGenerator
         MelodyStyle style,
         EmotionType emotion,
         int barCount,
+        int keyRoot,
+        bool minorKey,
         IReadOnlyList<string> seedPitches,
         bool seedInputEnabled,
         string? seedMode)
@@ -5370,8 +5546,8 @@ public sealed class MelodyGenerator
         int largeLeapCount = CountMainMelodyLargeLeaps(mainYNote);
         int subLargeLeapCount = CountSubMelodyLargeLeaps(subYNote);
         int parallelPerfectCount = CountParallelPerfectIntervals(mainYNote, subYNote);
-        int sharpCount = CountSharpNotesInYNote(mainYNote);
-        int harmonyScore = CalculateHarmonyScore(mainYNote, subYNote, style, emotion);
+        int sharpCount = CountStyleColorNotesInYNote(mainYNote, style, keyRoot);
+        int harmonyScore = CalculateHarmonyScore(mainYNote, subYNote, style, emotion, keyRoot);
 
         GetHarmonyScoreTargetRange(
             style,
@@ -5389,7 +5565,7 @@ public sealed class MelodyGenerator
                 ? "接近目標範圍"
                 : "偏離目標範圍，需要調整副旋律或主旋律";
 
-        double chordSupportRate = CalculateChordSupportRate(mainYNote, chordText, barCount);
+        double chordSupportRate = CalculateChordSupportRate(mainYNote, chordText, barCount, keyRoot, minorKey);
         double restRate = mainEvents.Count == 0 ? 0 : restCount / (double)mainEvents.Count;
         double subDensityRate = subEvents.Count == 0 ? 0 : subNoteCount / (double)subEvents.Count;
         int rhythmDiversity = mainEvents.Select(e => e.Rhythm).Distinct(StringComparer.OrdinalIgnoreCase).Count();
@@ -5468,7 +5644,7 @@ public sealed class MelodyGenerator
         return sb.ToString();
     }
 
-    private static int CalculateHarmonyScore(string mainYNote, string subYNote, MelodyStyle style, EmotionType emotion)
+    private static int CalculateHarmonyScore(string mainYNote, string subYNote, MelodyStyle style, EmotionType emotion, int keyRoot = 0)
     {
         int score = 100;
 
@@ -5503,7 +5679,7 @@ public sealed class MelodyGenerator
         else if (style != MelodyStyle.Pop && subNoteCount < 2)
             score -= 10;
 
-        score -= GetStyleCharacterPenalty(mainYNote, subYNote, style, emotion);
+        score -= GetStyleCharacterPenalty(mainYNote, subYNote, style, emotion, keyRoot);
 
         return Math.Clamp(score, 0, 100);
     }
@@ -5707,6 +5883,28 @@ public sealed class MelodyGenerator
         return pitch[0] is 'c' or 'd' or 'f' or 'g' or 'a' || pitch.Contains('#');
     }
 
+    private static int CountStyleColorNotesInYNote(string yNote, MelodyStyle style, int keyRoot)
+    {
+        if (style != MelodyStyle.JiangNan)
+            return CountSharpNotesInYNote(yNote);
+
+        // 江南五聲在 D/G/A/E 等調本來就會有 F#/C#；不要把「調號內音」當成雜音懲罰。
+        HashSet<int> jiangNanDegrees = [0, 2, 4, 7, 9];
+        int count = 0;
+
+        foreach ((string pitch, _) in ParseYNoteEvents(yNote))
+        {
+            if (pitch == "00")
+                continue;
+
+            int degree = NormalizeSemitone(PitchToAbsoluteSemitone(pitch) - keyRoot);
+            if (!jiangNanDegrees.Contains(degree))
+                count++;
+        }
+
+        return count;
+    }
+
     private static int CountMainMelodyLargeLeaps(string mainYNote)
     {
         int count = 0;
@@ -5777,10 +5975,10 @@ public sealed class MelodyGenerator
         return count;
     }
 
-    private static int GetStyleCharacterPenalty(string mainYNote, string subYNote, MelodyStyle style, EmotionType emotion)
+    private static int GetStyleCharacterPenalty(string mainYNote, string subYNote, MelodyStyle style, EmotionType emotion, int keyRoot = 0)
     {
         int penalty = 0;
-        int sharpCount = CountSharpNotesInYNote(mainYNote);
+        int sharpCount = CountStyleColorNotesInYNote(mainYNote, style, keyRoot);
         int mainLeapCount = CountMainMelodyLargeLeaps(mainYNote);
         int subLeapCount = CountSubMelodyLargeLeaps(subYNote);
 
@@ -5829,7 +6027,7 @@ public sealed class MelodyGenerator
         return penalty;
     }
 
-    private static double CalculateChordSupportRate(string mainYNote, string chordText, int barCount)
+    private static double CalculateChordSupportRate(string mainYNote, string chordText, int barCount, int keyRoot, bool minorKey)
     {
         if (barCount <= 0)
             return 0;
@@ -5840,7 +6038,7 @@ public sealed class MelodyGenerator
 
         for (int bar = 0; bar < Math.Min(barCount, bars.Count); bar++)
         {
-            ChordInfo chord = GetChordInfo(GetChordCodeAtBar(chordText, bar));
+            ChordInfo chord = GetChordInfo(GetChordCodeAtBar(chordText, bar), keyRoot, minorKey);
             foreach ((string pitch, _) in ParseYNoteEvents(bars[bar]))
             {
                 if (pitch == "00")
@@ -6590,7 +6788,7 @@ public sealed class MelodyGenerator
 
         for (int bar = 0; bar < barCount; bar++)
         {
-            ChordInfo chord = GetChordInfo(GetChordCodeAtBar(chordText, bar));
+            ChordInfo chord = GetChordInfo(GetChordCodeAtBar(chordText, bar), keyRoot, minorKey);
             string mainBar = bar < mainBars.Count ? mainBars[bar] : NormalizeSingleBarYNote("00" + "01");
             string subBar = GenerateSubMelodyBarFromMainBar(
                 style,
@@ -6623,7 +6821,7 @@ public sealed class MelodyGenerator
         List<string> bars = new(capacity: barCount);
         for (int bar = 0; bar < barCount; bar++)
         {
-            ChordInfo chord = GetChordInfo(GetChordCodeAtBar(chordText, bar));
+            ChordInfo chord = GetChordInfo(GetChordCodeAtBar(chordText, bar), keyRoot, minorKey);
             bars.Add(GenerateSubMelodyBar(style, emotion, densityText, chord, keyRoot, minorKey, bar, barCount));
         }
 
@@ -6661,7 +6859,7 @@ public sealed class MelodyGenerator
         foreach (string candidateDensity in candidateDensities)
         {
             string candidateSubYNote = GenerateSubMelodyForMainAndChordText(style, emotion, candidateDensity, chordText, keyRoot, minorKey, barCount, mainYNote);
-            int candidateScore = CalculateHarmonyScore(mainYNote, candidateSubYNote, style, emotion);
+            int candidateScore = CalculateHarmonyScore(mainYNote, candidateSubYNote, style, emotion, keyRoot);
             int rangeDistance = GetScoreRangeDistance(candidateScore, targetMinScore, targetMaxScore);
             int centerDistance = Math.Abs(candidateScore - targetCenterScore);
             int parallelCount = CountParallelPerfectIntervals(mainYNote, candidateSubYNote);

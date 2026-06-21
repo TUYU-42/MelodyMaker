@@ -41,10 +41,10 @@ public class IndexModel : PageModel
     [BindProperty]
     public MelodyRequest Input { get; set; } = new()
     {
-        Tempo = 80,
+        Tempo = 60,
         Style = "江南風格",
         Emotion = "Neutral",
-        Key = "C",
+        Key = "Auto",
         Mode = "Auto",
         SubDensity = "Medium",
         SongMinutes = 1
@@ -308,6 +308,11 @@ public class IndexModel : PageModel
         Input.ExpertMainYNote = result.MainYNote;
         Input.ExpertSubYNote = result.SubYNote;
         Input.UseExpertMode = true;
+        ModelState.Remove("Input.ChordText");
+        ModelState.Remove("Input.ExpertChordText");
+        ModelState.Remove("Input.ExpertMainYNote");
+        ModelState.Remove("Input.ExpertSubYNote");
+        ModelState.Remove("Input.UseExpertMode");
 
         StringBuilder warningBuilder = new();
 

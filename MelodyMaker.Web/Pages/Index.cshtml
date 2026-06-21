@@ -65,17 +65,19 @@
                 <div class="col-md-2">
                     <label asp-for="Input.Key" class="form-label">Key</label>
                     <select asp-for="Input.Key" class="form-select">
+                        <option>Auto</option>
                         <option>C</option>
-                        <option>G</option>
                         <option>D</option>
-                        <option>A</option>
                         <option>E</option>
                         <option>F</option>
+                        <option>G</option>
+                        <option>A</option>
                         <option>Bb</option>
                         <option>Eb</option>
                         <option>A minor</option>
                         <option>E minor</option>
                         <option>D minor</option>
+                        <option>F# minor</option>
                     </select>
                 </div>
 
@@ -98,7 +100,7 @@
 
                 <div class="col-md-2">
                     <label asp-for="Input.SongMinutes" class="form-label">Length(min)</label>
-                    <input asp-for="Input.SongMinutes" class="form-control" type="number" min="1" max="5" />
+                    <input asp-for="Input.SongMinutes" class="form-control" type="number" min="1" max="10" />
                 </div>
 
                 <div class="col-md-3">
@@ -209,6 +211,46 @@
                 <label asp-for="Input.ExpertSubYNote" class="form-label">Expert Sub YNote</label>
                 <textarea asp-for="Input.ExpertSubYNote" class="form-control font-monospace" rows="4" placeholder="可手動編輯副旋律；若要讓系統重算副旋律，按 Update Sub Melody"></textarea>
             </div>
+            @if (Model.ExpertRows.Count > 0)
+            {
+                <div class="expert-bar-editor-form">
+                    <div class="helper-note mb-3">
+                        逐小節欄位會在送出前同步到上方三個 Expert 欄位；按 Generate from Expert Mode 或 Update Sub Melody 時會使用這些值。
+                    </div>
+                    <div class="table-responsive rounded-table">
+                        <table class="table table-sm align-middle mb-0 expert-edit-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 70px;">Bar</th>
+                                    <th style="width: 150px;">Chord</th>
+                                    <th>Main YNote</th>
+                                    <th>Sub YNote</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in Model.ExpertRows)
+                                {
+                                    <tr>
+                                        <td><span class="bar-pill">@row.BarNumber</span></td>
+                                        <td>
+                                            <input class="form-control form-control-sm font-monospace" value="@row.ChordCode" maxlength="5" data-expert-token="chord" />
+                                            <span class="text-muted">@row.ChordName</span>
+                                        </td>
+                                        <td>
+                                            <textarea class="form-control form-control-sm font-monospace expert-y-note" rows="2" data-expert-token="main">@row.MainYNote</textarea>
+                                            <span class="text-muted">@row.MainPreview</span>
+                                        </td>
+                                        <td>
+                                            <textarea class="form-control form-control-sm font-monospace expert-y-note" rows="2" data-expert-token="sub">@row.SubYNote</textarea>
+                                            <span class="text-muted">@row.SubPreview</span>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
         </section>
 
         <div class="action-bar">
@@ -512,6 +554,33 @@
                     if (seedText) seedText.value = '';
                 });
             }
+
+            const syncExpertBarEditor = (container) => {
+                if (!container) return;
+
+                const collect = (kind) => Array.from(container.querySelectorAll(`[data-expert-token="${kind}"]`))
+                    .map((input) => input.value.replace(/\s+/g, '').trim())
+                    .join('');
+
+                const chordText = collect('chord');
+                const mainYNote = collect('main');
+                const subYNote = collect('sub');
+                const chordField = document.getElementById('Input_ExpertChordText');
+                const mainField = document.getElementById('Input_ExpertMainYNote');
+                const subField = document.getElementById('Input_ExpertSubYNote');
+                const useExpertField = document.getElementById('Input_UseExpertMode');
+
+                if (chordField && chordText) chordField.value = chordText;
+                if (mainField && mainYNote) mainField.value = mainYNote;
+                if (subField && subYNote) subField.value = subYNote;
+                if (useExpertField) useExpertField.checked = true;
+            };
+
+            document.querySelectorAll('.composer-form').forEach((form) => {
+                form.addEventListener('submit', () => {
+                    syncExpertBarEditor(form.querySelector('.expert-bar-editor-form'));
+                });
+            });
 
             const audio = document.getElementById('generatedAudio');
             const hint = document.getElementById('audioAutoplayHint');

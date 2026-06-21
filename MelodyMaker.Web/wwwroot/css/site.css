@@ -550,6 +550,20 @@ audio {
   font-weight: 850;
 }
 
+.expert-edit-table {
+  min-width: 980px;
+}
+
+.expert-edit-table textarea,
+.expert-edit-table input {
+  font-size: 0.82rem;
+}
+
+.expert-y-note {
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
 .output-grid {
   grid-template-columns: 1fr;
   margin-top: 1.2rem;

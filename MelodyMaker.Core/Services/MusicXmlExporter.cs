@@ -10,6 +10,26 @@ public sealed class MusicXmlExporter
     private const int TicksPerBeat = 480;
     private const int TicksPerBar = 1920;
 
+    private enum ChordDegree
+    {
+        I,
+        ii,
+        iii,
+        IV,
+        V,
+        V7,
+        vi,
+        viiDim,
+        bIII,
+        bVI,
+        bVII,
+        II,
+        III7,
+        VI7,
+        iv,
+        Unknown
+    }
+
     public void WriteScore(string outputPath, MelodyResult result)
     {
         if (string.IsNullOrWhiteSpace(outputPath))
@@ -142,8 +162,8 @@ public sealed class MusicXmlExporter
             if (includeChordSymbols && chordText.Length >= (bar + 1) * 5)
             {
                 string chordCode = chordText.Substring(bar * 5, 5);
-                WriteHarmonySymbol(xw, chordCode);
-                WriteWordsDirection(xw, GetChordDisplayName(chordCode));
+                WriteHarmonySymbol(xw, chordCode, key);
+                WriteWordsDirection(xw, GetChordDisplayName(chordCode, key));
             }
 
             List<ScoreEvent> rawEvents = ReadBarEvents(yNote, ref noteIndex, totalNotes);
@@ -379,9 +399,9 @@ public sealed class MusicXmlExporter
         xw.WriteEndElement();
     }
 
-    private static void WriteHarmonySymbol(XmlWriter xw, string chordCode)
+    private static void WriteHarmonySymbol(XmlWriter xw, string chordCode, string key)
     {
-        string displayName = GetChordDisplayName(chordCode);
+        string displayName = GetChordDisplayName(chordCode, key);
         if (string.IsNullOrWhiteSpace(displayName))
             return;
 
@@ -577,35 +597,200 @@ public sealed class MusicXmlExporter
 
     private static string GetChordDisplayName(string chordCode)
     {
+        return GetChordDisplayName(chordCode, "C");
+    }
+
+    private static string GetChordDisplayName(string chordCode, string key)
+    {
         if (string.IsNullOrWhiteSpace(chordCode))
             return string.Empty;
 
-        if (chordCode.Length >= 3 && chordCode[0] == 'X')
-        {
-            char root = chordCode[1];
-            char quality = chordCode[2];
+        if (chordCode.Length < 3 || chordCode[0] != 'X')
+            return chordCode;
 
-            return root switch
+        ChordDegree degree = GetChordDegree(chordCode);
+        if (degree == ChordDegree.Unknown)
+            return chordCode;
+
+        int keyRoot = GetKeyRootSemitone(key);
+        bool minorKey = IsMinorKey(key);
+        bool preferFlat = ShouldPreferFlatDisplay(key);
+        string rootName = PitchClassToDisplayName(GetDegreeRootSemitone(degree, keyRoot, minorKey), preferFlat);
+
+        if (degree == ChordDegree.viiDim)
+            return rootName + "dim";
+
+        if (degree is ChordDegree.V7 or ChordDegree.III7 or ChordDegree.VI7 or ChordDegree.II)
+            return rootName + "7";
+
+        return IsMinorTriadDegree(degree, minorKey) ? rootName + "m" : rootName;
+    }
+
+    private static ChordDegree GetChordDegree(string chordCode)
+    {
+        if (string.IsNullOrWhiteSpace(chordCode) || chordCode.Length < 2)
+            return ChordDegree.Unknown;
+
+        char root = chordCode[1];
+        char quality = chordCode.Length >= 3 ? chordCode[2] : '5';
+
+        return root switch
+        {
+            'C' => ChordDegree.I,
+            'D' => ChordDegree.ii,
+            'E' => ChordDegree.iii,
+            'F' => ChordDegree.IV,
+            'G' => quality == '7' ? ChordDegree.V7 : ChordDegree.V,
+            'A' => ChordDegree.vi,
+            'B' => ChordDegree.viiDim,
+            'H' => ChordDegree.bIII,
+            'L' => ChordDegree.bVI,
+            'K' => ChordDegree.bVII,
+            '2' => ChordDegree.II,
+            '3' => ChordDegree.III7,
+            '6' => ChordDegree.VI7,
+            'm' => ChordDegree.iv,
+            _ => ChordDegree.Unknown
+        };
+    }
+
+    private static int GetKeyRootSemitone(string? key)
+    {
+        string value = string.IsNullOrWhiteSpace(key) ? "C" : key.Trim();
+        value = value.Replace(" minor", string.Empty, StringComparison.OrdinalIgnoreCase).Trim();
+
+        return value switch
+        {
+            "C" => 0,
+            "C#" or "Db" => 1,
+            "D" => 2,
+            "D#" or "Eb" => 3,
+            "E" => 4,
+            "F" => 5,
+            "F#" or "Gb" => 6,
+            "G" => 7,
+            "G#" or "Ab" => 8,
+            "A" => 9,
+            "A#" or "Bb" => 10,
+            "B" => 11,
+            _ => 0
+        };
+    }
+
+    private static bool IsMinorKey(string? key)
+    {
+        return !string.IsNullOrWhiteSpace(key) && key.Contains("minor", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ShouldPreferFlatDisplay(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return false;
+
+        string original = key.Trim();
+        string majorName = original.Replace(" minor", string.Empty, StringComparison.OrdinalIgnoreCase).Trim();
+        return majorName.Contains('b', StringComparison.Ordinal) ||
+               majorName == "F" ||
+               original.Equals("D minor", StringComparison.OrdinalIgnoreCase) ||
+               original.Equals("G minor", StringComparison.OrdinalIgnoreCase) ||
+               original.Equals("C minor", StringComparison.OrdinalIgnoreCase) ||
+               original.Equals("F minor", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int NormalizeSemitone(int value)
+    {
+        int result = value % 12;
+        return result < 0 ? result + 12 : result;
+    }
+
+    private static int GetDegreeRootSemitone(ChordDegree degree, int keyRoot, bool minorKey)
+    {
+        int root = NormalizeSemitone(keyRoot);
+
+        if (!minorKey)
+            return NormalizeSemitone(degree switch
             {
-                'C' => quality == '7' ? "C7" : "C",
-                'D' => quality == '7' ? "D7" : "Dm",
-                'E' => quality == '7' ? "E7" : "Em",
-                'F' => quality == '7' ? "F7" : "F",
-                'G' => quality == '7' ? "G7" : "G",
-                'A' => quality == '7' ? "A7" : "Am",
-                'B' => "Bdim",
-                'H' => "Eb",
-                'L' => "Ab",
-                'K' => "Bb",
-                '2' => "D",
-                '3' => "E7",
-                '6' => "A7",
-                'm' => "Fm",
-                _ => chordCode
+                ChordDegree.I => root,
+                ChordDegree.ii => root + 2,
+                ChordDegree.iii => root + 4,
+                ChordDegree.IV => root + 5,
+                ChordDegree.V or ChordDegree.V7 => root + 7,
+                ChordDegree.vi => root + 9,
+                ChordDegree.viiDim => root + 11,
+                ChordDegree.bIII => root + 3,
+                ChordDegree.bVI => root + 8,
+                ChordDegree.bVII => root + 10,
+                ChordDegree.II => root + 2,
+                ChordDegree.III7 => root + 4,
+                ChordDegree.VI7 => root + 9,
+                ChordDegree.iv => root + 5,
+                _ => root
+            });
+
+        return NormalizeSemitone(degree switch
+        {
+            ChordDegree.I => root,
+            ChordDegree.ii => root + 2,
+            ChordDegree.iii or ChordDegree.bIII => root + 3,
+            ChordDegree.IV or ChordDegree.iv => root + 5,
+            ChordDegree.V or ChordDegree.V7 => root + 7,
+            ChordDegree.vi or ChordDegree.bVI => root + 8,
+            ChordDegree.viiDim => root + 11,
+            ChordDegree.bVII => root + 10,
+            ChordDegree.II => root + 2,
+            ChordDegree.III7 => root + 3,
+            ChordDegree.VI7 => root + 8,
+            _ => root
+        });
+    }
+
+    private static bool IsMinorTriadDegree(ChordDegree degree, bool minorKey)
+    {
+        if (!minorKey)
+            return degree is ChordDegree.ii or ChordDegree.iii or ChordDegree.vi or ChordDegree.iv;
+
+        return degree is ChordDegree.I or ChordDegree.IV or ChordDegree.iv;
+    }
+
+    private static string PitchClassToDisplayName(int pitchClass, bool preferFlat)
+    {
+        int pc = NormalizeSemitone(pitchClass);
+        if (preferFlat)
+        {
+            return pc switch
+            {
+                0 => "C",
+                1 => "Db",
+                2 => "D",
+                3 => "Eb",
+                4 => "E",
+                5 => "F",
+                6 => "Gb",
+                7 => "G",
+                8 => "Ab",
+                9 => "A",
+                10 => "Bb",
+                11 => "B",
+                _ => "C"
             };
         }
 
-        return chordCode;
+        return pc switch
+        {
+            0 => "C",
+            1 => "C#",
+            2 => "D",
+            3 => "D#",
+            4 => "E",
+            5 => "F",
+            6 => "F#",
+            7 => "G",
+            8 => "G#",
+            9 => "A",
+            10 => "A#",
+            11 => "B",
+            _ => "C"
+        };
     }
 
     private static int GetDuration(string key)
